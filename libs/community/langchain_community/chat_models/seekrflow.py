@@ -1,19 +1,24 @@
 import json
 from typing import Any, Iterator, List, Optional, cast
 
+from pydantic import Field, PrivateAttr
+
 from langchain.chat_models.base import BaseChatModel
 from langchain.schema import (
     AIMessage,
     BaseMessage,
-    BaseMessageChunk,
     ChatGeneration,
     ChatResult,
     HumanMessage,
     SystemMessage,
     PromptValue,
 )
+try:
+    from langchain.schema import BaseMessageChunk
+except ImportError:
+    BaseMessageChunk = str
+
 from langchain.callbacks.manager import CallbackManagerForLLMRun
-from pydantic import Field, PrivateAttr
 
 
 class ChatSeekrFlow(BaseChatModel):
@@ -41,7 +46,6 @@ class ChatSeekrFlow(BaseChatModel):
             raise ValueError("SeekrFlow client cannot be None.")
         if not isinstance(model_name, str) or not model_name.strip():
             raise ValueError("A valid model name must be provided.")
-
         super().__init__(**kwargs)
         object.__setattr__(self, "model_name", model_name)
         object.__setattr__(self, "temperature", temperature)
@@ -52,7 +56,7 @@ class ChatSeekrFlow(BaseChatModel):
     def _llm_type(self) -> str:
         return "seekrflow"
 
-    def _convert_input(self, input: Any) -> PromptValue:
+    def _convert_input(self, input: Any) -> PromptValue:  # type: ignore[override]
         """
         Convert various input types into a PromptValue (list of BaseMessage).
         Supports str, list[BaseMessage], dict with "text", or an object
@@ -69,15 +73,15 @@ class ChatSeekrFlow(BaseChatModel):
                 messages = input.to_messages()
             else:
                 raise ValueError(
-                    "Invalid input type; expected str, List[BaseMessage], dict with 'text', "
-                    "or ChatPromptValue."
+                    "Invalid input type; expected str, List[BaseMessage], dict with "
+                    "'text', or ChatPromptValue."
                 )
         elif hasattr(input, "to_messages") and callable(input.to_messages):
             messages = input.to_messages()
         else:
             raise ValueError(
-                "Invalid input type; expected str, List[BaseMessage], dict with 'text', "
-                "or ChatPromptValue."
+                "Invalid input type; expected str, List[BaseMessage], dict with "
+                "'text', or ChatPromptValue."
             )
         return cast(PromptValue, messages)
 
@@ -92,17 +96,18 @@ class ChatSeekrFlow(BaseChatModel):
         """Return a single final AIMessage from the SeekrFlow API."""
         messages = self._convert_input(input)
         system_content = next(
-            (msg.content for msg in messages if isinstance(msg, SystemMessage)), None
+            (msg.content for msg in messages if isinstance(msg, SystemMessage)),
+            None,
         )
         user_content = " ".join(
             msg.content for msg in messages if isinstance(msg, HumanMessage)
         )
-
         api_messages = []
         if system_content:
-            api_messages.append({"role": "system", "content": system_content})
+            api_messages.append(
+                {"role": "system", "content": system_content}
+            )
         api_messages.append({"role": "user", "content": user_content})
-
         response = self._client.chat.completions.create(
             model=self.model_name,
             messages=api_messages,
@@ -111,7 +116,9 @@ class ChatSeekrFlow(BaseChatModel):
         ai_content = response.choices[0].message.content
         if stop:
             stop_positions = [
-                ai_content.find(token) for token in stop if token in ai_content
+                ai_content.find(token)
+                for token in stop
+                if token in ai_content
             ]
             if stop_positions:
                 stop_index = min(pos for pos in stop_positions if pos != -1)
@@ -131,17 +138,18 @@ class ChatSeekrFlow(BaseChatModel):
             raise ValueError("Streaming is disabled. Cannot call .stream().")
         messages = self._convert_input(input)
         system_content = next(
-            (msg.content for msg in messages if isinstance(msg, SystemMessage)), None
+            (msg.content for msg in messages if isinstance(msg, SystemMessage)),
+            None,
         )
         user_content = " ".join(
             msg.content for msg in messages if isinstance(msg, HumanMessage)
         )
-
         api_messages = []
         if system_content:
-            api_messages.append({"role": "system", "content": system_content})
+            api_messages.append(
+                {"role": "system", "content": system_content}
+            )
         api_messages.append({"role": "user", "content": user_content})
-
         buffer = ""
         response_stream = self._client.chat.completions.create(
             model=self.model_name,
@@ -159,7 +167,6 @@ class ChatSeekrFlow(BaseChatModel):
                     and choice.delta
                     and hasattr(choice.delta, "content")
                 ):
-                    # Ensure that the content is treated as a string.
                     content = str(choice.delta.content)
                     if content:
                         buffer += content
@@ -169,9 +176,9 @@ class ChatSeekrFlow(BaseChatModel):
                                     idx = buffer.find(token)
                                     if idx != -1:
                                         buffer = buffer[:idx]
-                                        yield AIMessage(content=buffer)
+                                        yield buffer
                                         return
-                        yield AIMessage(content=content)
+                        yield content
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
             except Exception:

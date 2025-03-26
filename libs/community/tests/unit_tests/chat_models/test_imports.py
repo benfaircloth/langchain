@@ -41,6 +41,7 @@ EXPECTED_ALL = [
     "ChatPremAI",
     "ChatSambaNovaCloud",
     "ChatSambaStudio",
+    "ChatSeekrFlow",
     "ChatSparkLLM",
     "ChatTongyi",
     "ChatVertexAI",
